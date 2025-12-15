@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Upload, FileArchive, ArrowRight, Loader2, FileCheck, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { processArchiveClientSide } from "@/lib/archiveProcessor";
 
 interface SavedArchive {
   id: number;
@@ -85,61 +86,43 @@ export default function Home() {
     });
   };
 
+  const [leftProcessStage, setLeftProcessStage] = useState('');
+  const [rightProcessStage, setRightProcessStage] = useState('');
+
   const uploadFile = async (file: File, side: 'left' | 'right') => {
-    const formData = new FormData();
-    formData.append('file', file);
+    const setProgress = side === 'left' ? setLeftProgress : setRightProgress;
+    const setProcessStage = side === 'left' ? setLeftProcessStage : setRightProcessStage;
 
     try {
-      const data = await new Promise<any>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
-            if (side === 'left') {
-              setLeftProgress(percent);
-            } else {
-              setRightProgress(percent);
-            }
-          } else {
-            if (side === 'left') {
-              setLeftProgress(prev => Math.min(prev + 10, 90));
-            } else {
-              setRightProgress(prev => Math.min(prev + 10, 90));
-            }
-          }
-        });
-        
-        xhr.upload.addEventListener('loadend', () => {
-          if (side === 'left') {
-            setLeftProgress(100);
-          } else {
-            setRightProgress(100);
-          }
-        });
-        
-        xhr.addEventListener('load', () => {
-          if (side === 'left') {
-            setLeftProgress(100);
-          } else {
-            setRightProgress(100);
-          }
-          
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              resolve(JSON.parse(xhr.responseText));
-            } catch {
-              reject(new Error('Invalid response'));
-            }
-          } else {
-            reject(new Error('Upload failed'));
-          }
-        });
-        
-        xhr.addEventListener('error', () => reject(new Error('Upload failed')));
-        xhr.open('POST', '/api/archives/upload');
-        xhr.send(formData);
+      // Process archive client-side (extract, hash, parse)
+      setProcessStage('Extracting archive...');
+      const processed = await processArchiveClientSide(file, (stage, percent) => {
+        setProcessStage(stage);
+        setProgress(Math.round(percent * 0.7)); // 0-70% for client processing
       });
+      
+      // Send pre-processed data to lightweight API endpoint
+      setProcessStage('Uploading to server...');
+      setProgress(75);
+
+      const response = await fetch('/api/archives/upload-processed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(processed),
+      });
+
+      setProgress(90);
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Upload failed');
+      }
+
+      const data = await response.json();
+      setProgress(100);
+      setProcessStage('');
       
       const savedArchive: SavedArchive = {
         id: data.archive.id,
@@ -161,10 +144,11 @@ export default function Home() {
         title: "Upload successful",
         description: `${file.name} processed successfully`,
       });
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Upload error:', error);
       toast({
         title: "Upload failed",
-        description: "Failed to upload archive. Please try again.",
+        description: error.message || "Failed to upload archive. Please try again.",
         variant: "destructive",
       });
       
@@ -182,8 +166,10 @@ export default function Home() {
     } finally {
       if (side === 'left') {
         setLeftUploading(false);
+        setLeftProcessStage('');
       } else {
         setRightUploading(false);
+        setRightProcessStage('');
       }
     }
   };
@@ -330,12 +316,10 @@ export default function Home() {
                 transition={{ delay: 0.2 }}
               >
                 <p className={`font-semibold text-lg ${isLeft ? 'text-blue-600 dark:text-blue-400' : 'text-teal-600 dark:text-teal-400'}`}>
-                  {(isLeft ? leftProgress : rightProgress) < 100 ? 'Uploading...' : 'Processing...'}
+                  Processing...
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {(isLeft ? leftProgress : rightProgress) < 100 
-                    ? 'Sending your archive' 
-                    : 'Extracting and indexing files'}
+                  {isLeft ? leftProcessStage : rightProcessStage || 'Extracting and indexing files'}
                 </p>
               </motion.div>
             </motion.div>
