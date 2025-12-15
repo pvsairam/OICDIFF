@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "buildCommand": "npx tsx scripts/build-api.ts && npx vite build",
+  "outputDirectory": "dist/public",
+  "installCommand": "npm install",
+  "builds": [
+    {
+      "src": "api/test.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/handler.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/test",
+      "dest": "/api/test.js"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/handler.js"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}
