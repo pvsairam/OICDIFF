@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import multer from "multer";
+import serverless from "serverless-http";
 import { storage } from "./storage";
 import { computeSHA256, processIARArchive, extractFlowNodes } from "./utils/fileProcessor";
 import { computeFileDiff } from "./utils/diffEngine";
@@ -407,4 +408,5 @@ function generateReportHtml(diffRun: any, items: any[], leftArchive: any, rightA
 </html>`;
 }
 
-export default app;
+// Export for Vercel serverless
+export default serverless(app);

@@ -1,16 +1,18 @@
 {
   "version": 2,
-  "buildCommand": "npx tsx scripts/build-api.ts && npx vite build --outDir=public",
-  "outputDirectory": "public",
+  "buildCommand": "npx tsx scripts/build-api.ts && npx vite build",
+  "outputDirectory": "dist/public",
   "installCommand": "npm install",
+  "functions": {
+    "api/index.mjs": {
+      "runtime": "nodejs20.x",
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
-      "source": "/api/hello",
-      "destination": "/api/hello"
-    },
-    {
       "source": "/api/(.*)",
-      "destination": "/api"
+      "destination": "/api/index.mjs"
     }
   ]
 }
