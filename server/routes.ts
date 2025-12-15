@@ -25,7 +25,87 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // Upload archive
+  // Lightweight upload - receives pre-processed data from client
+  // This is optimized for serverless environments with short timeouts (Vercel Hobby)
+  app.post("/api/archives/upload-processed", async (req, res) => {
+    try {
+      const { fileName, fileSize, sha256, files, integrations } = req.body;
+      
+      if (!fileName || !sha256 || !files) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      // Create archive record
+      const archiveData = insertArchiveSchema.parse({
+        name: fileName.replace('.iar', ''),
+        fileName,
+        fileSize: fileSize || 0,
+        sha256,
+        metadata: {
+          uploadedBy: 'anonymous',
+          originalName: fileName,
+          clientProcessed: true,
+        },
+      });
+
+      const archive = await storage.createArchive(archiveData);
+
+      // Store files (already processed by client)
+      const archiveFiles = files.map((f: any) => ({
+        archiveId: archive.id,
+        path: f.path,
+        hash: f.hash,
+        size: f.size,
+        content: f.content,
+      }));
+
+      if (archiveFiles.length > 0) {
+        await storage.createArchiveFiles(archiveFiles);
+      }
+
+      // Store integrations (already extracted by client)
+      let integrationsCount = 0;
+      if (integrations && integrations.length > 0) {
+        const integrationRecords = integrations.map((i: any) => ({
+          archiveId: archive.id,
+          name: i.name,
+          identifier: i.identifier,
+          version: i.version || '1.0',
+          type: i.type || 'generic',
+          metadata: i.metadata,
+        }));
+        
+        const createdIntegrations = await storage.createIntegrations(integrationRecords);
+        integrationsCount = createdIntegrations.length;
+        
+        // Extract and store flow artifacts for each integration
+        for (const integration of createdIntegrations) {
+          const flowArtifacts = extractFlowNodes(integration.metadata, integration.id);
+          if (flowArtifacts.length > 0) {
+            await storage.createFlowArtifacts(flowArtifacts);
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        archive: {
+          id: archive.id,
+          name: archive.name,
+          fileName: archive.fileName,
+          fileSize: archive.fileSize,
+          uploadedAt: archive.uploadedAt,
+          filesCount: archiveFiles.length,
+          integrationsCount,
+        },
+      });
+    } catch (error: any) {
+      console.error('Upload processed error:', error);
+      res.status(500).json({ error: error.message || "Failed to upload archive" });
+    }
+  });
+
+  // Original upload endpoint (for non-serverless environments)
   app.post("/api/archives/upload", upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
