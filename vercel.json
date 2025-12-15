@@ -1,33 +1,16 @@
 {
   "version": 2,
-  "buildCommand": "npx tsx scripts/build-api.ts && npx vite build",
-  "outputDirectory": "dist/public",
+  "buildCommand": "npx tsx scripts/build-api.ts && npx vite build --outDir=public",
+  "outputDirectory": "public",
   "installCommand": "npm install",
-  "builds": [
+  "rewrites": [
     {
-      "src": "api/test.js",
-      "use": "@vercel/node"
+      "source": "/api/hello",
+      "destination": "/api/hello"
     },
     {
-      "src": "api/handler.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/test",
-      "dest": "/api/test.js"
-    },
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/handler.js"
-    },
-    {
-      "handle": "filesystem"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/api/(.*)",
+      "destination": "/api"
     }
   ]
 }

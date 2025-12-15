@@ -17357,8 +17357,8 @@ var require_escape_html = __commonJS({
   "node_modules/escape-html/index.js"(exports2, module) {
     "use strict";
     var matchHtmlRegExp = /["'&<>]/;
-    module.exports = escapeHtml2;
-    function escapeHtml2(string) {
+    module.exports = escapeHtml;
+    function escapeHtml(string) {
       var str = "" + string;
       var match = matchHtmlRegExp.exec(str);
       if (!match) {
@@ -17489,7 +17489,7 @@ var require_finalhandler = __commonJS({
     "use strict";
     var debug = require_src2()("finalhandler");
     var encodeUrl = require_encodeurl();
-    var escapeHtml2 = require_escape_html();
+    var escapeHtml = require_escape_html();
     var onFinished = require_on_finished();
     var parseUrl = require_parseurl();
     var statuses = require_statuses();
@@ -17501,13 +17501,13 @@ var require_finalhandler = __commonJS({
     };
     var isFinished = onFinished.isFinished;
     function createHtmlDocument(message) {
-      var body = escapeHtml2(message).replace(NEWLINE_REGEXP, "<br>").replace(DOUBLE_SPACE_REGEXP, " &nbsp;");
+      var body = escapeHtml(message).replace(NEWLINE_REGEXP, "<br>").replace(DOUBLE_SPACE_REGEXP, " &nbsp;");
       return '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>Error</title>\n</head>\n<body>\n<pre>' + body + "</pre>\n</body>\n</html>\n";
     }
     module.exports = finalhandler;
     function finalhandler(req, res, options) {
       var opts = options || {};
-      var env = opts.env || "production";
+      var env = opts.env || process.env.NODE_ENV || "development";
       var onerror = opts.onerror;
       return function(err) {
         var headers;
@@ -20017,7 +20017,7 @@ var require_send = __commonJS({
     var deprecate = require_depd()("send");
     var destroy = require_destroy();
     var encodeUrl = require_encodeurl2();
-    var escapeHtml2 = require_escape_html();
+    var escapeHtml = require_escape_html();
     var etag = require_etag();
     var fresh = require_fresh();
     var fs = __require("fs");
@@ -20117,7 +20117,7 @@ var require_send = __commonJS({
       }
       var res = this.res;
       var msg = statuses.message[status] || String(status);
-      var doc = createHtmlDocument("Error", escapeHtml2(msg));
+      var doc = createHtmlDocument("Error", escapeHtml(msg));
       clearHeaders(res);
       if (err && err.headers) {
         setHeaders(res, err.headers);
@@ -20217,7 +20217,7 @@ var require_send = __commonJS({
         return;
       }
       var loc = encodeUrl(collapseLeadingSlashes(this.path + "/"));
-      var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml2(loc));
+      var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml(loc));
       res.statusCode = 301;
       res.setHeader("Content-Type", "text/html; charset=UTF-8");
       res.setHeader("Content-Length", Buffer.byteLength(doc));
@@ -21549,7 +21549,7 @@ var require_application = __commonJS({
       this.defaultConfiguration();
     };
     app2.defaultConfiguration = function defaultConfiguration() {
-      var env = "production";
+      var env = process.env.NODE_ENV || "development";
       this.enable("x-powered-by");
       this.set("etag", "weak");
       this.set("env", env);
@@ -22804,7 +22804,7 @@ var require_response = __commonJS({
     var createError = require_http_errors();
     var deprecate = require_depd()("express");
     var encodeUrl = require_encodeurl();
-    var escapeHtml2 = require_escape_html();
+    var escapeHtml = require_escape_html();
     var http = __require("http");
     var isAbsolute = require_utils2().isAbsolute;
     var onFinished = require_on_finished();
@@ -23210,7 +23210,7 @@ var require_response = __commonJS({
           body = statuses.message[status] + ". Redirecting to " + address;
         },
         html: function() {
-          var u = escapeHtml2(address);
+          var u = escapeHtml(address);
           body = "<p>" + statuses.message[status] + ". Redirecting to " + u + "</p>";
         },
         default: function() {
@@ -23342,7 +23342,7 @@ var require_serve_static = __commonJS({
   "node_modules/serve-static/index.js"(exports2, module) {
     "use strict";
     var encodeUrl = require_encodeurl();
-    var escapeHtml2 = require_escape_html();
+    var escapeHtml = require_escape_html();
     var parseUrl = require_parseurl();
     var resolve = __require("path").resolve;
     var send = require_send();
@@ -23429,7 +23429,7 @@ var require_serve_static = __commonJS({
         originalUrl.path = null;
         originalUrl.pathname = collapseLeadingSlashes(originalUrl.pathname + "/");
         var loc = encodeUrl(url.format(originalUrl));
-        var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml2(loc));
+        var doc = createHtmlDocument("Redirecting", "Redirecting to " + escapeHtml(loc));
         res.statusCode = 301;
         res.setHeader("Content-Type", "text/html; charset=UTF-8");
         res.setHeader("Content-Length", Buffer.byteLength(doc));
@@ -39024,7 +39024,7 @@ var require_adm_zip = __commonJS({
   }
 });
 
-// api/index.ts
+// server/api-vercel.ts
 var import_express = __toESM(require_express2(), 1);
 var import_multer = __toESM(require_multer(), 1);
 
@@ -53004,12 +53004,7 @@ function parseGen3FromArchiveFiles(files) {
   return parseGen3Orchestration(projectFile.content);
 }
 
-// api/index.ts
-console.log("[API] Starting serverless function...");
-console.log("[API] DATABASE_URL exists:", !!process.env.DATABASE_URL);
-console.log("[API] NEON_DATABASE_URL exists:", !!process.env.NEON_DATABASE_URL);
-console.log("[API] VERCEL env:", process.env.VERCEL);
-console.log("[API] All imports loaded successfully");
+// server/api-vercel.ts
 var app = (0, import_express.default)();
 app.use(import_express.default.json());
 app.use(import_express.default.urlencoded({ extended: false }));
@@ -53234,7 +53229,7 @@ app.use((err, _req, res, _next) => {
   const status = err.status || err.statusCode || 500;
   const message = err.message || "Internal Server Error";
   console.error(`[API Error] ${status}: ${message}`, err.stack || err);
-  res.status(status).json({ error: message, stack: false ? err.stack : void 0 });
+  res.status(status).json({ error: message });
 });
 async function processDiffAsync(diffRunId, leftArchiveId, rightArchiveId) {
   try {
@@ -53262,6 +53257,9 @@ function generateReportHtml(diffRun, items, leftArchive, rightArchive) {
   const addedItems = items.filter((i) => i.changeType === "added");
   const removedItems = items.filter((i) => i.changeType === "removed");
   const modifiedItems = items.filter((i) => i.changeType === "modified");
+  const escapeHtml = (text2) => {
+    return text2.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  };
   const renderSection = (title, sectionItems, color, icon) => {
     if (sectionItems.length === 0) return "";
     return `
@@ -53353,12 +53351,9 @@ function generateReportHtml(diffRun, items, leftArchive, rightArchive) {
 </body>
 </html>`;
 }
-function escapeHtml(text2) {
-  return text2.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-}
-var index_default = app;
+var api_vercel_default = app;
 export {
-  index_default as default
+  api_vercel_default as default
 };
 /*! Bundled license information:
 

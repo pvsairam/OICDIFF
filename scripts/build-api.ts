@@ -3,13 +3,14 @@ import { build } from 'esbuild';
 async function buildApi() {
   console.log('Building API for Vercel...');
   
+  // Build from the source in server folder
   await build({
-    entryPoints: ['api/index.ts'],
+    entryPoints: ['server/api-vercel.ts'],
     platform: 'node',
     target: 'node18',
     bundle: true,
-    format: 'cjs',
-    outfile: 'api/handler.js',
+    format: 'esm',
+    outfile: 'api/index.js',
     external: [
       'pg-native',
     ],

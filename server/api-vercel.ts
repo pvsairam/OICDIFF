@@ -1,18 +1,10 @@
 import express, { type Request, Response, NextFunction } from "express";
 import multer from "multer";
-
-console.log("[API] Starting serverless function...");
-console.log("[API] DATABASE_URL exists:", !!process.env.DATABASE_URL);
-console.log("[API] NEON_DATABASE_URL exists:", !!process.env.NEON_DATABASE_URL);
-console.log("[API] VERCEL env:", process.env.VERCEL);
-
-import { storage } from "../server/storage";
-import { computeSHA256, processIARArchive, extractFlowNodes } from "../server/utils/fileProcessor";
-import { computeFileDiff } from "../server/utils/diffEngine";
-import { parseBpelFromArchiveFiles } from "../server/utils/bpelParser";
+import { storage } from "./storage";
+import { computeSHA256, processIARArchive, extractFlowNodes } from "./utils/fileProcessor";
+import { computeFileDiff } from "./utils/diffEngine";
+import { parseBpelFromArchiveFiles } from "./utils/bpelParser";
 import { insertArchiveSchema, insertDiffRunSchema } from "../shared/schema";
-
-console.log("[API] All imports loaded successfully");
 
 const app = express();
 
@@ -276,7 +268,7 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   const status = err.status || err.statusCode || 500;
   const message = err.message || "Internal Server Error";
   console.error(`[API Error] ${status}: ${message}`, err.stack || err);
-  res.status(status).json({ error: message, stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined });
+  res.status(status).json({ error: message });
 });
 
 async function processDiffAsync(
@@ -312,6 +304,15 @@ function generateReportHtml(diffRun: any, items: any[], leftArchive: any, rightA
   const addedItems = items.filter(i => i.changeType === 'added');
   const removedItems = items.filter(i => i.changeType === 'removed');
   const modifiedItems = items.filter(i => i.changeType === 'modified');
+
+  const escapeHtml = (text: string): string => {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  };
 
   const renderSection = (title: string, sectionItems: any[], color: string, icon: string) => {
     if (sectionItems.length === 0) return '';
@@ -404,15 +405,6 @@ function generateReportHtml(diffRun: any, items: any[], leftArchive: any, rightA
   </div>
 </body>
 </html>`;
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 export default app;
