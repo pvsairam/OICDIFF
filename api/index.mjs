@@ -50870,7 +50870,13 @@ if (!connectionString) {
 var needsSSL = connectionString.includes("neon.tech") || connectionString.includes("sslmode=require") || process.env.VERCEL === "1";
 var pool = new Pool3({
   connectionString,
-  ssl: needsSSL ? { rejectUnauthorized: false } : false
+  ssl: needsSSL ? { rejectUnauthorized: false } : false,
+  max: 1,
+  // Serverless: one connection per function instance
+  connectionTimeoutMillis: 5e3,
+  // 5 second connection timeout
+  idleTimeoutMillis: 1e4
+  // Close idle connections quickly
 });
 var db = drizzle(pool, { schema: schema_exports });
 

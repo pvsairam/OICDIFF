@@ -18,8 +18,12 @@ const needsSSL = connectionString.includes('neon.tech') ||
                  connectionString.includes('sslmode=require') ||
                  process.env.VERCEL === '1';
 
+// Optimized for serverless: small pool, fast timeouts
 export const pool = new Pool({ 
   connectionString,
   ssl: needsSSL ? { rejectUnauthorized: false } : false,
+  max: 1, // Serverless: one connection per function instance
+  connectionTimeoutMillis: 5000, // 5 second connection timeout
+  idleTimeoutMillis: 10000, // Close idle connections quickly
 });
 export const db = drizzle(pool, { schema });
