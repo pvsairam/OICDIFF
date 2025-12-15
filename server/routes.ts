@@ -50,8 +50,9 @@ export async function registerRoutes(
 
       const archive = await storage.createArchive(archiveData);
 
-      // Store files (already processed by client)
-      const archiveFiles = files.map((f: any) => ({
+      // Only insert files with actual hashes (skip placeholder entries)
+      const criticalFiles = files.filter((f: any) => f.hash && f.hash !== 'skipped');
+      const archiveFiles = criticalFiles.map((f: any) => ({
         archiveId: archive.id,
         path: f.path,
         hash: f.hash,

@@ -53833,8 +53833,8 @@ function parseGen3FromArchiveFiles(files) {
 
 // server/api-vercel.ts
 var app = (0, import_express.default)();
-app.use(import_express.default.json());
-app.use(import_express.default.urlencoded({ extended: false }));
+app.use(import_express.default.json({ limit: "50mb" }));
+app.use(import_express.default.urlencoded({ extended: false, limit: "50mb" }));
 var upload = (0, import_multer.default)({
   storage: import_multer.default.memoryStorage(),
   limits: {
@@ -53846,6 +53846,71 @@ var upload = (0, import_multer.default)({
     } else {
       cb(new Error("Only .iar files are allowed"));
     }
+  }
+});
+app.post("/api/archives/upload-processed", async (req, res) => {
+  try {
+    const { fileName, fileSize, sha256, files, integrations: integrations2 } = req.body;
+    if (!fileName || !sha256 || !files) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+    const archiveData = insertArchiveSchema.parse({
+      name: fileName.replace(".iar", ""),
+      fileName,
+      fileSize: fileSize || 0,
+      sha256,
+      metadata: {
+        uploadedBy: "anonymous",
+        originalName: fileName,
+        clientProcessed: true
+      }
+    });
+    const archive = await storage.createArchive(archiveData);
+    const criticalFiles = files.filter((f) => f.hash && f.hash !== "skipped");
+    const archiveFiles2 = criticalFiles.map((f) => ({
+      archiveId: archive.id,
+      path: f.path,
+      hash: f.hash,
+      size: f.size,
+      content: f.content
+    }));
+    if (archiveFiles2.length > 0) {
+      await storage.createArchiveFiles(archiveFiles2);
+    }
+    let integrationsCount = 0;
+    if (integrations2 && integrations2.length > 0) {
+      const integrationRecords = integrations2.map((i) => ({
+        archiveId: archive.id,
+        name: i.name,
+        identifier: i.identifier,
+        version: i.version || "1.0",
+        type: i.type || "generic",
+        metadata: i.metadata
+      }));
+      const createdIntegrations = await storage.createIntegrations(integrationRecords);
+      integrationsCount = createdIntegrations.length;
+      for (const integration of createdIntegrations) {
+        const flowArtifacts2 = extractFlowNodes(integration.metadata, integration.id);
+        if (flowArtifacts2.length > 0) {
+          await storage.createFlowArtifacts(flowArtifacts2);
+        }
+      }
+    }
+    res.json({
+      success: true,
+      archive: {
+        id: archive.id,
+        name: archive.name,
+        fileName: archive.fileName,
+        fileSize: archive.fileSize,
+        uploadedAt: archive.uploadedAt,
+        filesCount: archiveFiles2.length,
+        integrationsCount
+      }
+    });
+  } catch (error) {
+    console.error("Upload processed error:", error);
+    res.status(500).json({ error: error.message || "Failed to upload archive" });
   }
 });
 app.post("/api/archives/upload", upload.single("file"), async (req, res) => {

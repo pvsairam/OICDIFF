@@ -129,49 +129,77 @@ export async function processArchiveClientSide(
   const totalEntries = entries.length;
   let processed = 0;
   
+  // Filter to only process critical files to minimize payload and DB writes
+  // This is optimized for Vercel Hobby's 10-second timeout
+  const criticalPaths = entries.filter(path => {
+    const lower = path.toLowerCase();
+    return !zip.files[path].dir && (
+      lower.includes('project.xml') ||
+      lower.endsWith('.bpel') ||
+      lower.includes('orchestration') ||
+      lower.includes('icspackage') ||
+      lower.includes('.xsl') ||
+      lower.includes('manifest')
+    );
+  });
+  
+  // Also track all files with just metadata (path/size) for complete manifest
   for (const path of entries) {
     const entry = zip.files[path];
     if (entry.dir) continue;
     
     processed++;
-    const progress = 30 + (processed / totalEntries) * 50;
-    onProgress?.(`Processing ${path.split('/').pop()}...`, progress);
     
-    try {
-      const content = await entry.async('string');
-      const fileHash = await computeSHA256(content);
+    // Only fully process critical files
+    const isCritical = criticalPaths.includes(path);
+    
+    if (isCritical) {
+      const progress = 30 + (processed / totalEntries) * 50;
+      onProgress?.(`Processing ${path.split('/').pop()}...`, progress);
       
-      const isCriticalFile = path.toLowerCase().includes('project.xml') || 
-                             path.toLowerCase().endsWith('.bpel');
-      
+      try {
+        const content = await entry.async('string');
+        const fileHash = await computeSHA256(content);
+        
+        // Store content for critical files under 50KB
+        files.push({
+          path,
+          hash: fileHash,
+          size: content.length,
+          content: content.length < 50000 ? content : null,
+        });
+        
+        // Parse integration metadata from XML files
+        if (path.endsWith('.xml')) {
+          try {
+            const xmlData = parseXML(content);
+            if (xmlData) {
+              const integrationName = extractIntegrationName(path, xmlData);
+              if (integrationName) {
+                integrations.push({
+                  name: integrationName,
+                  identifier: path,
+                  version: '1.0',
+                  type: determineIntegrationType(path),
+                  metadata: xmlData,
+                });
+              }
+            }
+          } catch (e) {
+            console.warn(`Failed to parse XML: ${path}`, e);
+          }
+        }
+      } catch (e) {
+        console.warn(`Failed to process entry: ${path}`, e);
+      }
+    } else {
+      // For non-critical files, just store path and estimated size (no content/hash)
       files.push({
         path,
-        hash: fileHash,
-        size: content.length,
-        content: (content.length < 100000 || isCriticalFile) ? content : null,
+        hash: 'skipped',
+        size: 0,
+        content: null,
       });
-      
-      if ((path.includes('icspackage') || path.includes('project')) && path.endsWith('.xml')) {
-        try {
-          const xmlData = parseXML(content);
-          if (xmlData) {
-            const integrationName = extractIntegrationName(path, xmlData);
-            if (integrationName) {
-              integrations.push({
-                name: integrationName,
-                identifier: path,
-                version: '1.0',
-                type: determineIntegrationType(path),
-                metadata: xmlData,
-              });
-            }
-          }
-        } catch (e) {
-          console.warn(`Failed to parse XML: ${path}`, e);
-        }
-      }
-    } catch (e) {
-      console.warn(`Failed to process entry: ${path}`, e);
     }
   }
   

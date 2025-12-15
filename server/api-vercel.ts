@@ -9,8 +9,8 @@ import { insertArchiveSchema, insertDiffRunSchema } from "../shared/schema";
 
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -26,6 +26,84 @@ const upload = multer({
   },
 });
 
+// Lightweight upload - receives pre-processed data from client (optimized for Vercel Hobby 10s timeout)
+app.post("/api/archives/upload-processed", async (req, res) => {
+  try {
+    const { fileName, fileSize, sha256, files, integrations } = req.body;
+    
+    if (!fileName || !sha256 || !files) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const archiveData = insertArchiveSchema.parse({
+      name: fileName.replace('.iar', ''),
+      fileName,
+      fileSize: fileSize || 0,
+      sha256,
+      metadata: {
+        uploadedBy: 'anonymous',
+        originalName: fileName,
+        clientProcessed: true,
+      },
+    });
+
+    const archive = await storage.createArchive(archiveData);
+
+    // Only insert files with actual hashes (skip placeholder entries)
+    const criticalFiles = files.filter((f: any) => f.hash && f.hash !== 'skipped');
+    const archiveFiles = criticalFiles.map((f: any) => ({
+      archiveId: archive.id,
+      path: f.path,
+      hash: f.hash,
+      size: f.size,
+      content: f.content,
+    }));
+
+    if (archiveFiles.length > 0) {
+      await storage.createArchiveFiles(archiveFiles);
+    }
+
+    let integrationsCount = 0;
+    if (integrations && integrations.length > 0) {
+      const integrationRecords = integrations.map((i: any) => ({
+        archiveId: archive.id,
+        name: i.name,
+        identifier: i.identifier,
+        version: i.version || '1.0',
+        type: i.type || 'generic',
+        metadata: i.metadata,
+      }));
+      
+      const createdIntegrations = await storage.createIntegrations(integrationRecords);
+      integrationsCount = createdIntegrations.length;
+      
+      for (const integration of createdIntegrations) {
+        const flowArtifacts = extractFlowNodes(integration.metadata, integration.id);
+        if (flowArtifacts.length > 0) {
+          await storage.createFlowArtifacts(flowArtifacts);
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      archive: {
+        id: archive.id,
+        name: archive.name,
+        fileName: archive.fileName,
+        fileSize: archive.fileSize,
+        uploadedAt: archive.uploadedAt,
+        filesCount: archiveFiles.length,
+        integrationsCount,
+      },
+    });
+  } catch (error: any) {
+    console.error('Upload processed error:', error);
+    res.status(500).json({ error: error.message || "Failed to upload archive" });
+  }
+});
+
+// Original upload endpoint (for non-serverless environments)
 app.post("/api/archives/upload", upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
