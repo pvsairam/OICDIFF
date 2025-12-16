@@ -433,7 +433,7 @@ export default function DiffViewer() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const fetchDiffData = async () => {
+  const fetchDiffData = async (retryCount = 0) => {
     try {
       const [runRes, itemsRes] = await Promise.all([
         fetch(`/api/diff-runs/${diffId}`),
@@ -442,12 +442,21 @@ export default function DiffViewer() {
 
       const runData = await runRes.json();
       const itemsData = await itemsRes.json();
+      const items = itemsData.items || [];
+      const status = runData?.diffRun?.status || runData?.status;
 
       setDiffRun(runData);
-      setDiffItems(itemsData.items || []);
+      setDiffItems(items);
       
-      if (itemsData.items?.length > 0) {
-        selectItem(itemsData.items[0]);
+      // If status is completed but no items, there might be a race condition
+      // Retry fetching items a few times
+      if (status === 'completed' && items.length === 0 && retryCount < 5) {
+        setTimeout(() => fetchDiffData(retryCount + 1), 500);
+        return; // Don't set loading to false yet
+      }
+      
+      if (items.length > 0) {
+        selectItem(items[0]);
       }
     } catch (error) {
       console.error('Failed to fetch diff data:', error);
