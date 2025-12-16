@@ -369,6 +369,27 @@ export default function DiffViewer() {
       fetchDiffData();
     }
   }, [diffId]);
+
+  // Poll for diff completion when status is processing
+  useEffect(() => {
+    const status = (diffRun as any)?.diffRun?.status || diffRun?.status;
+    if (!diffRun || status !== 'processing') return;
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/diff-runs/${diffId}`);
+        const data = await res.json();
+        if (data.diffRun?.status === 'completed' || data.diffRun?.status === 'failed') {
+          clearInterval(pollInterval);
+          fetchDiffData(); // Refetch all data when complete
+        }
+      } catch (e) {
+        console.error('Polling error:', e);
+      }
+    }, 1000); // Check every second
+    
+    return () => clearInterval(pollInterval);
+  }, [diffRun, diffId]);
   
   useEffect(() => {
     const handleResize = () => {
@@ -535,6 +556,20 @@ export default function DiffViewer() {
           <Button variant="outline" size="sm" asChild>
             <a href="/dashboard">Go Back</a>
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show processing state while diff is being computed
+  const currentStatus = (diffRun as any)?.diffRun?.status || diffRun?.status;
+  if (currentStatus === 'processing') {
+    return (
+      <div className="flex items-center justify-center h-screen bg-slate-900">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-10 h-10 animate-spin mx-auto text-blue-400" />
+          <p className="text-slate-300 text-lg font-medium">Analyzing differences...</p>
+          <p className="text-slate-500 text-sm">This may take a few seconds</p>
         </div>
       </div>
     );
