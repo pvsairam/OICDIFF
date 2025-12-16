@@ -161,12 +161,18 @@ export async function processArchiveClientSide(
         const content = await entry.async('string');
         const fileHash = await computeSHA256(content);
         
-        // Store content for critical files under 50KB
+        // Store content for critical files - always store orchestration/BPEL for flow visualization
+        const lowerPath = path.toLowerCase();
+        const isFlowFile = lowerPath.includes('project.xml') || 
+                          lowerPath.endsWith('.bpel') || 
+                          lowerPath.includes('orchestration');
+        const shouldStoreContent = isFlowFile || content.length < 50000;
+        
         files.push({
           path,
           hash: fileHash,
           size: content.length,
-          content: content.length < 50000 ? content : null,
+          content: shouldStoreContent ? content : null,
         });
         
         // Parse integration metadata from XML files
