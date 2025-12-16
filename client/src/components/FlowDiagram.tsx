@@ -70,6 +70,12 @@ interface ParsedFlow {
   };
 }
 
+type NodeChangeStatus = 'added' | 'removed' | 'modified' | 'unchanged';
+
+interface NodeChanges {
+  [nodeId: string]: NodeChangeStatus;
+}
+
 interface FlowDiagramProps {
   flow: ParsedFlow | null;
   className?: string;
@@ -77,6 +83,55 @@ interface FlowDiagramProps {
   orientation?: 'vertical' | 'horizontal';
   onOrientationChange?: (orientation: 'vertical' | 'horizontal') => void;
   showControls?: boolean;
+  nodeChanges?: NodeChanges;
+}
+
+export function compareFlows(leftFlow: ParsedFlow | null, rightFlow: ParsedFlow | null): { leftChanges: NodeChanges; rightChanges: NodeChanges } {
+  const leftChanges: NodeChanges = {};
+  const rightChanges: NodeChanges = {};
+  
+  if (!leftFlow || !rightFlow) {
+    return { leftChanges, rightChanges };
+  }
+  
+  const leftNodeMap = new Map(leftFlow.nodes.map(n => [n.name.toLowerCase(), n]));
+  const rightNodeMap = new Map(rightFlow.nodes.map(n => [n.name.toLowerCase(), n]));
+  
+  for (const node of leftFlow.nodes) {
+    const key = node.name.toLowerCase();
+    const rightNode = rightNodeMap.get(key);
+    
+    if (!rightNode) {
+      leftChanges[node.id] = 'removed';
+    } else if (
+      node.activityType !== rightNode.activityType ||
+      node.type !== rightNode.type ||
+      JSON.stringify(node.data) !== JSON.stringify(rightNode.data)
+    ) {
+      leftChanges[node.id] = 'modified';
+    } else {
+      leftChanges[node.id] = 'unchanged';
+    }
+  }
+  
+  for (const node of rightFlow.nodes) {
+    const key = node.name.toLowerCase();
+    const leftNode = leftNodeMap.get(key);
+    
+    if (!leftNode) {
+      rightChanges[node.id] = 'added';
+    } else if (
+      node.activityType !== leftNode.activityType ||
+      node.type !== leftNode.type ||
+      JSON.stringify(node.data) !== JSON.stringify(leftNode.data)
+    ) {
+      rightChanges[node.id] = 'modified';
+    } else {
+      rightChanges[node.id] = 'unchanged';
+    }
+  }
+  
+  return { leftChanges, rightChanges };
 }
 
 const iconMap: Record<string, React.ComponentType<any>> = {
@@ -152,15 +207,51 @@ function getActivityDescription(activityType: string): string {
   return descMap[activityType] || activityType;
 }
 
+function getChangeStatusStyles(changeStatus: NodeChangeStatus | undefined): { ring: string; badge: { bg: string; text: string; label: string } | null } {
+  switch (changeStatus) {
+    case 'added':
+      return { 
+        ring: 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-900',
+        badge: { bg: 'bg-emerald-500', text: 'text-white', label: 'NEW' }
+      };
+    case 'removed':
+      return { 
+        ring: 'ring-2 ring-rose-400 ring-offset-2 ring-offset-slate-900',
+        badge: { bg: 'bg-rose-500', text: 'text-white', label: 'REMOVED' }
+      };
+    case 'modified':
+      return { 
+        ring: 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-900',
+        badge: { bg: 'bg-amber-500', text: 'text-white', label: 'MODIFIED' }
+      };
+    default:
+      return { ring: '', badge: null };
+  }
+}
+
+function ChangeStatusBadge({ changeStatus }: { changeStatus: NodeChangeStatus | undefined }) {
+  const styles = getChangeStatusStyles(changeStatus);
+  if (!styles.badge) return null;
+  
+  return (
+    <div className={`absolute -top-2 -right-2 ${styles.badge.bg} ${styles.badge.text} text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-lg z-10`}>
+      {styles.badge.label}
+    </div>
+  );
+}
+
 function DetailedTriggerNode({ data }: NodeProps) {
   const [expanded, setExpanded] = useState(false);
   const isSelected = data.isSelected;
+  const changeStyles = getChangeStatusStyles(data.changeStatus);
+  const hasChange = data.changeStatus && data.changeStatus !== 'unchanged';
   
   return (
     <div
-      className={`flex flex-col items-stretch min-w-48 transition-all ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 rounded-lg scale-105' : ''}`}
+      className={`relative flex flex-col items-stretch min-w-48 transition-all rounded-lg ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 scale-105' : hasChange ? changeStyles.ring : ''}`}
       data-testid={`flow-node-trigger-${data.id}`}
     >
+      <ChangeStatusBadge changeStatus={data.changeStatus} />
       <div 
         className={`bg-gradient-to-r from-teal-600 to-teal-700 rounded-t-lg p-3 cursor-pointer ${isSelected ? 'shadow-lg shadow-blue-500/30' : ''}`}
         onClick={() => setExpanded(!expanded)}
@@ -211,6 +302,8 @@ function DetailedActionNode({ data }: NodeProps) {
   const isMapping = data.activityType === 'assign' || data.activityType?.includes('map') || data.activityType?.includes('transform');
   const description = getActivityDescription(data.activityType);
   const isSelected = data.isSelected;
+  const changeStyles = getChangeStatusStyles(data.changeStatus);
+  const hasChange = data.changeStatus && data.changeStatus !== 'unchanged';
   
   const bgColor = isMapping 
     ? 'from-teal-600/80 to-teal-700/80' 
@@ -219,9 +312,10 @@ function DetailedActionNode({ data }: NodeProps) {
   
   return (
     <div
-      className={`flex flex-col items-stretch min-w-48 transition-all ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 rounded-lg scale-105' : ''}`}
+      className={`relative flex flex-col items-stretch min-w-48 transition-all rounded-lg ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 scale-105' : hasChange ? changeStyles.ring : ''}`}
       data-testid={`flow-node-action-${data.id}`}
     >
+      <ChangeStatusBadge changeStatus={data.changeStatus} />
       <Handle type="target" position={data.orientation === 'horizontal' ? Position.Left : Position.Top} className="!bg-slate-400 !w-3 !h-3" />
       <div 
         className={`bg-gradient-to-r ${bgColor} rounded-t-lg p-3 cursor-pointer border ${borderColor} border-b-0`}
@@ -276,12 +370,15 @@ function DetailedActionNode({ data }: NodeProps) {
 function DetailedSwitchNode({ data }: NodeProps) {
   const [expanded, setExpanded] = useState(false);
   const isSelected = data.isSelected;
+  const changeStyles = getChangeStatusStyles(data.changeStatus);
+  const hasChange = data.changeStatus && data.changeStatus !== 'unchanged';
   
   return (
     <div
-      className={`flex flex-col items-stretch min-w-48 transition-all ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 rounded-lg scale-105' : ''}`}
+      className={`relative flex flex-col items-stretch min-w-48 transition-all rounded-lg ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 scale-105' : hasChange ? changeStyles.ring : ''}`}
       data-testid={`flow-node-switch-${data.id}`}
     >
+      <ChangeStatusBadge changeStatus={data.changeStatus} />
       <Handle type="target" position={data.orientation === 'horizontal' ? Position.Left : Position.Top} className="!bg-amber-400 !w-3 !h-3" />
       <div 
         className="bg-gradient-to-r from-amber-600 to-amber-700 rounded-t-lg p-3 cursor-pointer"
@@ -329,12 +426,15 @@ function DetailedLoopNode({ data }: NodeProps) {
   const [expanded, setExpanded] = useState(false);
   const isForEach = data.activityType === 'forEach';
   const isSelected = data.isSelected;
+  const changeStyles = getChangeStatusStyles(data.changeStatus);
+  const hasChange = data.changeStatus && data.changeStatus !== 'unchanged';
   
   return (
     <div
-      className={`flex flex-col items-stretch min-w-48 transition-all ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 rounded-lg scale-105' : ''}`}
+      className={`relative flex flex-col items-stretch min-w-48 transition-all rounded-lg ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 scale-105' : hasChange ? changeStyles.ring : ''}`}
       data-testid={`flow-node-loop-${data.id}`}
     >
+      <ChangeStatusBadge changeStatus={data.changeStatus} />
       <Handle type="target" position={data.orientation === 'horizontal' ? Position.Left : Position.Top} className="!bg-violet-400 !w-3 !h-3" />
       <div 
         className="bg-gradient-to-r from-violet-600 to-violet-700 rounded-t-lg p-3 cursor-pointer"
@@ -378,12 +478,15 @@ function DetailedScopeNode({ data }: NodeProps) {
   const [expanded, setExpanded] = useState(false);
   const isTry = data.activityType === 'try';
   const isSelected = data.isSelected;
+  const changeStyles = getChangeStatusStyles(data.changeStatus);
+  const hasChange = data.changeStatus && data.changeStatus !== 'unchanged';
   
   return (
     <div
-      className={`flex flex-col items-stretch min-w-48 transition-all ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 rounded-lg scale-105' : ''}`}
+      className={`relative flex flex-col items-stretch min-w-48 transition-all rounded-lg ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 scale-105' : hasChange ? changeStyles.ring : ''}`}
       data-testid={`flow-node-scope-${data.id}`}
     >
+      <ChangeStatusBadge changeStatus={data.changeStatus} />
       <Handle type="target" position={data.orientation === 'horizontal' ? Position.Left : Position.Top} className="!bg-indigo-400 !w-3 !h-3" />
       <div 
         className={`bg-gradient-to-r ${isTry ? 'from-indigo-600 to-indigo-700' : 'from-slate-600 to-slate-700'} rounded-t-lg p-3 cursor-pointer border-2 border-dashed ${isTry ? 'border-indigo-400/50' : 'border-slate-400/50'}`}
@@ -426,12 +529,15 @@ function DetailedScopeNode({ data }: NodeProps) {
 function DetailedErrorNode({ data }: NodeProps) {
   const [expanded, setExpanded] = useState(false);
   const isSelected = data.isSelected;
+  const changeStyles = getChangeStatusStyles(data.changeStatus);
+  const hasChange = data.changeStatus && data.changeStatus !== 'unchanged';
   
   return (
     <div
-      className={`flex flex-col items-stretch min-w-48 transition-all ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 rounded-lg scale-105' : ''}`}
+      className={`relative flex flex-col items-stretch min-w-48 transition-all rounded-lg ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 scale-105' : hasChange ? changeStyles.ring : ''}`}
       data-testid={`flow-node-error-${data.id}`}
     >
+      <ChangeStatusBadge changeStatus={data.changeStatus} />
       <Handle type="target" position={data.orientation === 'horizontal' ? Position.Left : Position.Top} className="!bg-red-400 !w-3 !h-3" />
       <div 
         className="bg-gradient-to-r from-red-600 to-red-700 rounded-t-lg p-3 cursor-pointer"
@@ -467,12 +573,15 @@ function DetailedErrorNode({ data }: NodeProps) {
 
 function DetailedEndNode({ data }: NodeProps) {
   const isSelected = data.isSelected;
+  const changeStyles = getChangeStatusStyles(data.changeStatus);
+  const hasChange = data.changeStatus && data.changeStatus !== 'unchanged';
   
   return (
     <div
-      className={`flex flex-col items-stretch min-w-40 transition-all ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 rounded-lg scale-105' : ''}`}
+      className={`relative flex flex-col items-stretch min-w-40 transition-all rounded-lg ${isSelected ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-slate-900 scale-105' : hasChange ? changeStyles.ring : ''}`}
       data-testid={`flow-node-end-${data.id}`}
     >
+      <ChangeStatusBadge changeStatus={data.changeStatus} />
       <Handle type="target" position={data.orientation === 'horizontal' ? Position.Left : Position.Top} className="!bg-emerald-400 !w-3 !h-3" />
       <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 rounded-lg p-3">
         <div className="flex items-center gap-3">
@@ -539,7 +648,7 @@ function getLayoutedElements(
   return { nodes: layoutedNodes, edges };
 }
 
-function convertToReactFlowNodes(flowNodes: FlowNode[], orientation: 'vertical' | 'horizontal', selectedNodeId?: string): Node[] {
+function convertToReactFlowNodes(flowNodes: FlowNode[], orientation: 'vertical' | 'horizontal', selectedNodeId?: string, nodeChanges?: NodeChanges): Node[] {
   return flowNodes.map((node) => ({
     id: node.id,
     type: node.type,
@@ -552,6 +661,7 @@ function convertToReactFlowNodes(flowNodes: FlowNode[], orientation: 'vertical' 
       activityType: node.activityType,
       orientation,
       isSelected: node.id === selectedNodeId,
+      changeStatus: nodeChanges?.[node.id] || 'unchanged',
       ...node.data,
     },
   }));
@@ -606,6 +716,7 @@ export function FlowDiagram({
   orientation: externalOrientation,
   onOrientationChange,
   showControls = true,
+  nodeChanges,
 }: FlowDiagramProps) {
   const [internalOrientation, setInternalOrientation] = useState<'vertical' | 'horizontal'>('vertical');
   const [selectedNode, setSelectedNode] = useState<SelectedNodeData | null>(null);
@@ -614,7 +725,7 @@ export function FlowDiagram({
   const { layoutedNodes, layoutedEdges } = useMemo(() => {
     if (!flow) return { layoutedNodes: [], layoutedEdges: [] };
     
-    const initialNodes = convertToReactFlowNodes(flow.nodes, orientation, selectedNode?.id);
+    const initialNodes = convertToReactFlowNodes(flow.nodes, orientation, selectedNode?.id, nodeChanges);
     const initialEdges = convertToReactFlowEdges(flow.connections);
     
     const { nodes, edges } = getLayoutedElements(
@@ -912,6 +1023,17 @@ export function FlowComparison({ leftFlow, rightFlow, className = '' }: FlowComp
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical');
   const [fullscreen, setFullscreen] = useState<'left' | 'right' | null>(null);
   
+  const { leftChanges, rightChanges } = useMemo(() => {
+    return compareFlows(leftFlow, rightFlow);
+  }, [leftFlow, rightFlow]);
+  
+  const changeStats = useMemo(() => {
+    const added = Object.values(rightChanges).filter(s => s === 'added').length;
+    const removed = Object.values(leftChanges).filter(s => s === 'removed').length;
+    const modified = Object.values(leftChanges).filter(s => s === 'modified').length;
+    return { added, removed, modified };
+  }, [leftChanges, rightChanges]);
+  
   const renderFlowContent = () => (
     <>
       <div className="flex items-center justify-between p-2 bg-slate-800/50 border-b border-slate-700">
@@ -944,8 +1066,32 @@ export function FlowComparison({ leftFlow, rightFlow, className = '' }: FlowComp
             </button>
           </div>
         </div>
-        <div className="text-xs text-slate-500">
-          Use scroll to zoom • Click nodes for details
+        <div className="flex items-center gap-3">
+          {(changeStats.added > 0 || changeStats.removed > 0 || changeStats.modified > 0) && (
+            <div className="flex items-center gap-2 text-xs">
+              {changeStats.added > 0 && (
+                <span className="flex items-center gap-1 bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  {changeStats.added} new
+                </span>
+              )}
+              {changeStats.removed > 0 && (
+                <span className="flex items-center gap-1 bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full">
+                  <span className="w-2 h-2 rounded-full bg-rose-400" />
+                  {changeStats.removed} removed
+                </span>
+              )}
+              {changeStats.modified > 0 && (
+                <span className="flex items-center gap-1 bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  {changeStats.modified} modified
+                </span>
+              )}
+            </div>
+          )}
+          <div className="text-xs text-slate-500">
+            Use scroll to zoom • Click nodes for details
+          </div>
         </div>
       </div>
       
@@ -970,6 +1116,7 @@ export function FlowComparison({ leftFlow, rightFlow, className = '' }: FlowComp
             className="h-full" 
             orientation={orientation}
             showControls={false}
+            nodeChanges={leftChanges}
           />
         </div>
         <div className="w-px bg-slate-700" />
@@ -993,6 +1140,7 @@ export function FlowComparison({ leftFlow, rightFlow, className = '' }: FlowComp
             className="h-full" 
             orientation={orientation}
             showControls={false}
+            nodeChanges={rightChanges}
           />
         </div>
       </div>
@@ -1051,6 +1199,7 @@ export function FlowComparison({ leftFlow, rightFlow, className = '' }: FlowComp
               className="h-full" 
               orientation={orientation}
               showControls={false}
+              nodeChanges={fullscreen === 'left' ? leftChanges : rightChanges}
             />
           </div>
         </div>
