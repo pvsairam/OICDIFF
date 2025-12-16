@@ -381,7 +381,38 @@ export default function DiffViewer() {
         const data = await res.json();
         if (data.diffRun?.status === 'completed' || data.diffRun?.status === 'failed') {
           clearInterval(pollInterval);
-          fetchDiffData(); // Refetch all data when complete
+          // Update diffRun state immediately with the polled data
+          setDiffRun(data);
+          // Then fetch items separately
+          const itemsRes = await fetch(`/api/diff-runs/${diffId}/items`);
+          const itemsData = await itemsRes.json();
+          const items = itemsData.items || [];
+          setDiffItems(items);
+          
+          // Select first item and load its content
+          if (items.length > 0) {
+            const firstItem = items[0];
+            setSelectedItem(firstItem);
+            setLoadingContent(true);
+            const filePath = firstItem.leftRef || firstItem.rightRef || '';
+            try {
+              const contentRes = await fetch(`/api/diff-items/${firstItem.id}/content`);
+              if (contentRes.ok) {
+                const contentData = await contentRes.json();
+                setLeftContent(formatContent(contentData.leftContent || '', filePath));
+                setRightContent(formatContent(contentData.rightContent || '', filePath));
+              } else {
+                setLeftContent(formatContent(firstItem.diffPatch || '', filePath));
+                setRightContent('');
+              }
+            } catch {
+              setLeftContent(formatContent(firstItem.diffPatch || '', filePath));
+              setRightContent('');
+            } finally {
+              setLoadingContent(false);
+            }
+          }
+          setLoading(false);
         }
       } catch (e) {
         console.error('Polling error:', e);
